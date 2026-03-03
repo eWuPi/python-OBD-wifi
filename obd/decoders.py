@@ -51,6 +51,18 @@ def <name>(<list_of_messages>):
 '''
 
 
+def odometer(messages):
+    print(messages)
+    """
+    Dekoder dla licznika kilometrów (PID 01A6).
+    Niektóre pojazdy zwracają wartość w 1/10 km — dzielimy przez 10.
+    """
+    d = messages[0].data[2:]
+    v = bytes_to_int(d)
+    v = v / 10.0
+    return Unit.Quantity(v, Unit.kilometer)
+
+
 # drop all messages, return None
 def drop(_):
     return None
@@ -94,6 +106,10 @@ General sensor decoders
 Return pint Quantities
 """
 
+def count(messages):
+    d = messages[0].data[2:]
+    v = bytes_to_int(d)
+    return v * Unit.count
 
 # 0 to 100 %
 def percent(messages):
@@ -484,3 +500,28 @@ def monitor(messages):
             mon.add_test(test)
 
     return mon
+
+
+def encoded_string(length):
+    """ Extract an encoded string from multi-part messages """
+    return functools.partial(decode_encoded_string, length=length)
+
+
+def decode_encoded_string(messages, length):
+    d = messages[0].data[2:]
+
+    if len(d) < length:
+        logger.debug("Invalid string {}. Discarding...", d)
+        return None
+
+    # Encoded strings come in bundles of messages with leading null values to
+    # pad out the string to the next full message size. We strip off the
+    # leading null characters here and return the resulting string.
+    return d.strip().strip(b'\x00' b'\x01' b'\x02' b'\\x00' b'\\x01' b'\\x02')
+
+
+def cvn(messages):
+    d = decode_encoded_string(messages, 4)
+    if d is None:
+        return None
+    return bytes_to_hex(d)
